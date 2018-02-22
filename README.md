@@ -10,3 +10,12 @@ currently supports
  
  
 including custom implementation of ads1115 ADC i²c driver
+
+## dependencies:
+
+ - golang.org/x/exp/io/i2c
+   for i²c support
+ - github.com/brian-armstrong/gpio
+   for gpio support on raspberry pi - including native interrupts
+ - github.com/eclipse/paho.mqtt.golang
+   for mqtt support
