@@ -11,10 +11,22 @@ import "github.com/WHW-HD/frog/sensors"
 import "github.com/brian-armstrong/gpio"
 import mqtt "github.com/eclipse/paho.mqtt.golang"
 
+import (
+	"github.com/d2r2/go-bsbmp"
+	"github.com/d2r2/go-i2c"
+	logger "github.com/d2r2/go-logger"
+)
 
-const TOPIC_WINDVANE = "anemo/windvane"
-const TOPIC_ANEMO    = "anemo/anemo"
-const TOPIC_RAIN     = "anemo/rain"
+var lg = logger.NewPackageLogger("main",
+	// logger.DebugLevel,
+	logger.InfoLevel,
+)
+
+const TOPIC_WINDVANE    = "anemo/windvane"
+const TOPIC_ANEMO       = "anemo/anemo"
+const TOPIC_RAIN        = "anemo/rain"
+const TOPIC_PRESSURE    = "anemo/pressure"
+const TOPIC_TEMPERATURE = "anemo/temperature"
 
 func main() {
 	// channel for SIGINT and SIGTERM
@@ -56,6 +68,28 @@ func main() {
 	// close ads1115 when this main routine exits
 	defer ads.Close()
 
+	// Create new connection to i2c-bus on 1 line with address 0x76.
+	// Use i2cdetect utility to find device address over the i2c-bus
+	i2c, err := i2c.NewI2C(0x76, 1)
+	if err != nil {
+		lg.Fatal(err)
+	}
+	defer i2c.Close()
+	// Uncomment next line to suppress verbose output
+	// logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
+
+	// sensor, err := bsbmp.NewBMP(bsbmp.BMP180_TYPE, i2c)
+	sensor, err := bsbmp.NewBMP(bsbmp.BMP280_TYPE, i2c)
+	if err != nil {
+		lg.Fatal(err)
+	}
+	// Uncomment next line to suppress verbose output
+	// logger.ChangePackageLogLevel("bsbmp", logger.InfoLevel)
+
+	err = sensor.IsValidCoefficients()
+	if err != nil {
+		lg.Fatal(err)
+	}
 	// poll windvane value once per second
 	ticker := time.NewTicker(1 * time.Second)
 	go func() {
@@ -71,6 +105,33 @@ func main() {
 			}
 		}
 	}()
+
+  // poll temperature and pressure once per minute
+  ticker2 := time.NewTicker(1 * time.Minute)
+  go func() {
+    for range ticker2.C {
+
+      // Read temperature in celsius degree
+      t, err := sensor.ReadTemperatureC(bsbmp.ACCURACY_STANDARD)
+      if err != nil {
+        lg.Fatal(err)
+      }
+      lg.Infof("Temprature = %v*C", t)
+      if token := mqtt.Publish(TOPIC_TEMPERATURE, 0, false, strconv.FormatFloat(float64(t), 'f', -1, 32)); token.Wait() && token.Error() != nil {
+        panic(token.Error())
+      } 
+
+      // Read atmospheric pressure in pascal
+      p, err := sensor.ReadPressurePa(bsbmp.ACCURACY_LOW)
+      if err != nil {
+        lg.Fatal(err)
+      }
+      lg.Infof("Pressure = %v Pa", p)
+      if token := mqtt.Publish(TOPIC_PRESSURE, 0, false, strconv.FormatFloat(float64(p), 'f', -1, 32)); token.Wait() && token.Error() != nil {
+        panic(token.Error())
+      } 
+    }
+  }()
 
 	// anemometer = 26, rain = 25
 	watcher := gpio.NewWatcher()
