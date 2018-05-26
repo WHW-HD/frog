@@ -35,9 +35,16 @@ func main() {
 		done <- true
 	}()
 
+  // args without prog
+  args := os.Args[1:]
+  mqttHost := args[0]
+  mqttUser := args[1]
+  mqttPass := args[2]  
 
 	// initialize mqtt client
-	mqttOptions := mqtt.NewClientOptions().AddBroker("tcp://test.mosquitto.org:1883")
+	mqttOptions := mqtt.NewClientOptions().AddBroker(fmt.Sprintf("tcp://%s:1883", mqttHost))
+  mqttOptions.SetPassword(mqttPass)
+  mqttOptions.SetUsername(mqttUser)
 	mqtt := mqtt.NewClient(mqttOptions)
 	if token := mqtt.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
